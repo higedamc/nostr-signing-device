@@ -122,7 +122,7 @@ void generateNewKeyHex(char *buffer) {
 
 void generateRandomIV(uint8_t *iv, int length) {
     for (int i = 0; i < length; i++) {
-        iv[i] = random(0, 256);
+        iv[i] = esp_random() & 0xFF;
     }
 }
 

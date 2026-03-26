@@ -145,7 +145,7 @@ void displayLoginScreen() {
   const int pinLength = 8;
   String enteredPin = "";
 
-  int currentDigit = 0;
+  int currentDigit = esp_random() % 10;
   unsigned long lastButtonPressTime = 0;
 
   // Initialize failed attempt count
@@ -199,6 +199,7 @@ void displayLoginScreen() {
       } else if (buttonNumber == "1" && buttonState == "1") { // Confirm digit or submit
         if (enteredPin.length() < pinLength) {
           enteredPin += String(currentDigit); // Confirm the current digit
+          currentDigit = esp_random() % 10;
 
           if (enteredPin.length() == pinLength) {
             if (enteredPin == correctPin) {
@@ -218,7 +219,7 @@ void displayLoginScreen() {
                 int attemptsLeft = maxAttempts - global.pinAttempts;
                 showMessage("PIN Denied", String(attemptsLeft) + " Attempts Left");
                 enteredPin = ""; // Reset the entered PIN
-                currentDigit = 0;
+                currentDigit = esp_random() % 10;
 
                 // Full screen clear
                 tft.fillScreen(global.backgroundColor);
@@ -237,7 +238,7 @@ void displaySetPinScreen() {
 
   const int pinLength = 8;
   String newPin = "";
-  int currentDigit = 0;
+  int currentDigit = esp_random() % 10;
 
   unsigned long lastButtonPressTime = 0;
 
@@ -289,6 +290,7 @@ void displaySetPinScreen() {
       } else if (buttonNumber == "1" && buttonState == "1") { // Confirm digit or complete PIN
         if (newPin.length() < pinLength) {
           newPin += String(currentDigit); // Add the current digit to the PIN
+          currentDigit = esp_random() % 10;
 
           if (newPin.length() == pinLength) {
             // PIN entry completed
