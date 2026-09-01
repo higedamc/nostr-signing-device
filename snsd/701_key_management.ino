@@ -179,10 +179,20 @@ CommandResponse executeNameKey(String data) {
   }
 
   String key = global.privateKeys[index];
+  String currentLabel = global.keyNames.count(key) ? global.keyNames[key] : previewString(hexToNostr(getPublicKey(key), "npub"));
+
+  global.onLogo = false;
+  setDisplay(true);
 
   if (name.isEmpty()) {
     // Remove the name if the input name is blank
     if (global.keyNames.count(key)) {
+      if (!confirmOnDevice("Remove Key Name?", "Before: " + padRightWithSpaces(currentLabel, 20), "After: (unnamed)")) {
+        sendCommandOutput(COMMAND_NAME_KEY, "Rejected");
+        showMessage("Request Rejected", "Name removal aborted.");
+        return {"Rejected", "Name removal aborted"};
+      }
+
       global.keyNames.erase(key); // Remove the name from the map
       saveKeys();
       showMessage("Key Name Removed", "Key at index " + indexStr + " had its name removed");
@@ -191,6 +201,12 @@ CommandResponse executeNameKey(String data) {
       return {"Error", "No name to remove for this key"};
     }
   } else {
+    if (!confirmOnDevice("Rename Key?", "Before: " + padRightWithSpaces(currentLabel, 20), "After: " + padRightWithSpaces(name, 20))) {
+      sendCommandOutput(COMMAND_NAME_KEY, "Rejected");
+      showMessage("Request Rejected", "Rename aborted.");
+      return {"Rejected", "Rename aborted"};
+    }
+
     // Set or update the name
     global.keyNames[key] = name;
     saveKeys();
