@@ -202,15 +202,21 @@ String decryptDirectMessageContent(const String &sharedSecretHex, const String &
     // distinguish "bad length" from "bad padding bytes" (padding-oracle
     // mitigation) — the underlying AES-CBC here still has no MAC, so this
     // narrows but does not close that class of attack.
+    //
+    // The byte comparison below never early-exits on the first mismatch: it
+    // OR-accumulates the differences so the loop always runs exactly
+    // paddingLen iterations regardless of *where* a mismatch occurs. An
+    // early break would make the loop's duration reveal how many leading
+    // padding bytes matched, a byte-at-a-time timing oracle on top of the
+    // one this padding check is trying to close.
     uint8_t paddingLen = ciphertext[ciphertextLen - 1];
     bool paddingValid = paddingLen >= 1 && paddingLen <= 16 && paddingLen <= ciphertextLen;
     if (paddingValid) {
+        uint8_t diff = 0;
         for (size_t i = ciphertextLen - paddingLen; i < ciphertextLen; i++) {
-            if (ciphertext[i] != paddingLen) {
-                paddingValid = false;
-                break;
-            }
+            diff |= ciphertext[i] ^ paddingLen;
         }
+        paddingValid = (diff == 0);
     }
     if (!paddingValid) {
         logInfo("Decryption failed: Invalid padding.");
