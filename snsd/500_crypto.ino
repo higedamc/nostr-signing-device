@@ -98,9 +98,14 @@ String encryptDirectMessageContent(const String &sharedSecretHex, const String &
     uint8_t iv[16];
     generateRandomIV(iv, sizeof(iv));
 
-    // Prepare plaintext with zero padding
+    // Prepare plaintext with PKCS#7 padding, matching the NIP-04 reference
+    // implementation (Node's crypto.createCipheriv('aes-256-cbc', ...) pads
+    // with PKCS#7 by default: https://github.com/nostr-protocol/nips/blob/master/04.md).
+    // A message whose length is already a multiple of 16 still gets a full
+    // padding block, per PKCS#7.
     String data = text;
-    while (data.length() % 16 != 0) data += char(0x00);
+    uint8_t padLen = 16 - (data.length() % 16);
+    for (uint8_t i = 0; i < padLen; i++) data += char(padLen);
 
     // Convert plaintext to byte array
     int byteSize = data.length();
@@ -171,6 +176,16 @@ String decryptDirectMessageContent(const String &sharedSecretHex, const String &
         return "";
     }
 
+    // tiny-AES-c's AES_CBC_decrypt_buffer walks the buffer in fixed 16-byte
+    // strides (see libraries/tiny-AES-c/aes.cpp) with no length check of its
+    // own, so a non-block-aligned ciphertextLen makes its last stride read
+    // and write past the end of the `ciphertext` stack buffer. This must be
+    // checked before calling it, not just before reading the padding byte.
+    if (ciphertextLen == 0 || ciphertextLen % 16 != 0) {
+        logInfo("Decryption failed: Invalid padding.");
+        return "";
+    }
+
     // Convert shared secret from hex to binary
     uint8_t sharedSecret[32];
     fromHex(sharedSecretHex, sharedSecret, 32);
@@ -180,19 +195,39 @@ String decryptDirectMessageContent(const String &sharedSecretHex, const String &
     AES_init_ctx_iv(&ctx, sharedSecret, iv);
     AES_CBC_decrypt_buffer(&ctx, ciphertext, ciphertextLen);
 
-    // Remove padding
+    // Remove PKCS#7 padding. Validate the length first (bounded by both 16
+    // and ciphertextLen, so plaintextLen cannot underflow/wrap), then check
+    // every padding byte matches, per PKCS#7. All padding-related failures
+    // share one message/return path so a caller watching the response can't
+    // distinguish "bad length" from "bad padding bytes" (padding-oracle
+    // mitigation) — the underlying AES-CBC here still has no MAC, so this
+    // narrows but does not close that class of attack.
     uint8_t paddingLen = ciphertext[ciphertextLen - 1];
-    if (paddingLen > 16) {
+    bool paddingValid = paddingLen >= 1 && paddingLen <= 16 && paddingLen <= ciphertextLen;
+    if (paddingValid) {
+        for (size_t i = ciphertextLen - paddingLen; i < ciphertextLen; i++) {
+            if (ciphertext[i] != paddingLen) {
+                paddingValid = false;
+                break;
+            }
+        }
+    }
+    if (!paddingValid) {
         logInfo("Decryption failed: Invalid padding.");
         return "";
     }
 
     size_t plaintextLen = ciphertextLen - paddingLen;
 
-    // Convert to string and return
-    String decryptedData = String((char *)ciphertext).substring(0, plaintextLen);
-    logInfo("Decrypted Data: " + decryptedData);
+    // Build the result byte-by-byte (not via String(char*)) so we never read
+    // past plaintextLen looking for a NUL terminator that isn't there, and so
+    // an embedded 0x00 byte in the plaintext doesn't silently truncate it.
+    String decryptedData;
+    decryptedData.reserve(plaintextLen);
+    for (size_t i = 0; i < plaintextLen; i++) {
+        decryptedData += (char)ciphertext[i];
+    }
 
-    // If no prefix is expected, simply return the data
+    // Do not log decrypted plaintext, even in debug builds.
     return decryptedData;
 }
