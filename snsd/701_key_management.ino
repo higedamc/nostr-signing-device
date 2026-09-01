@@ -9,13 +9,23 @@ CommandResponse executeRestore(String privateKey) {
     showMessage("Restore Key", "Invalid private key hex.");
     return {"", ""};
   }
-  
+
   // Check if the key already exists
   for (const String& existingKey : global.privateKeys) {
     if (existingKey == privateKey) {
       showMessage("Key Already Exists", "The private key is already in the list.");
       return {"", ""};
     }
+  }
+
+  global.onLogo = false;
+  setDisplay(true);
+
+  String keyPreview = padRightWithSpaces(previewString(hexToNostr(getPublicKey(privateKey), "npub")), 20);
+  if (!confirmOnDevice("Import Key?", "Pubkey: " + keyPreview, "Total will be: " + String(global.privateKeys.size() + 1))) {
+    sendCommandOutput(COMMAND_RESTORE, "Rejected");
+    showMessage("Request Rejected", "Key import aborted.");
+    return {"Rejected", "Key import aborted"};
   }
 
   // Add the key if it doesn't already exist
@@ -45,6 +55,16 @@ CommandResponse executeAddKey(String privateKey) {
     }
   }
 
+  global.onLogo = false;
+  setDisplay(true);
+
+  String keyPreview = padRightWithSpaces(previewString(hexToNostr(getPublicKey(privateKey), "npub")), 20);
+  if (!confirmOnDevice("Add Key?", "Pubkey: " + keyPreview, "Total will be: " + String(global.privateKeys.size() + 1))) {
+    sendCommandOutput(COMMAND_ADD_KEY, "Rejected");
+    showMessage("Request Rejected", "Key add aborted.");
+    return {"Rejected", "Key add aborted"};
+  }
+
   // Add the key if it doesn't already exist
   global.privateKeys.push_back(privateKey);
   saveKeys();
@@ -61,6 +81,17 @@ CommandResponse executeRemoveKey(String indexStr) {
     return {"Error", "Invalid index"};
   }
   String key = global.privateKeys[index];
+
+  global.onLogo = false;
+  setDisplay(true);
+
+  String keyPreview = padRightWithSpaces(global.keyNames.count(key) ? global.keyNames[key] : previewString(hexToNostr(getPublicKey(key), "npub")), 20);
+  if (!confirmOnDevice("Remove Key?", "Key: " + keyPreview, "Cannot be undone")) {
+    sendCommandOutput(COMMAND_REMOVE_KEY, "Rejected");
+    showMessage("Request Rejected", "Key removal aborted.");
+    return {"Rejected", "Key removal aborted"};
+  }
+
   global.privateKeys.erase(global.privateKeys.begin() + index);
   global.keyNames.erase(key); // Remove name if exists
   if (global.activeKeyIndex >= global.privateKeys.size()) {
@@ -89,6 +120,18 @@ CommandResponse executeSwitchKey(String indexStr) {
   if (index < 0 || index >= global.privateKeys.size()) {
     return {"Error", "Invalid index"};
   }
+
+  global.onLogo = false;
+  setDisplay(true);
+
+  String key = global.privateKeys[index];
+  String keyPreview = padRightWithSpaces(global.keyNames.count(key) ? global.keyNames[key] : previewString(hexToNostr(getPublicKey(key), "npub")), 20);
+  if (!confirmOnDevice("Switch Key?", "To: " + keyPreview, "")) {
+    sendCommandOutput(COMMAND_SWITCH_KEY, "Rejected");
+    showMessage("Request Rejected", "Key switch aborted.");
+    return {"Rejected", "Key switch aborted"};
+  }
+
   global.activeKeyIndex = index;
   saveActiveKeyIndex();
 
@@ -99,6 +142,15 @@ CommandResponse executeSwitchKey(String indexStr) {
 }
 
 CommandResponse executeNewKey(String data) {
+  global.onLogo = false;
+  setDisplay(true);
+
+  if (!confirmOnDevice("Generate New Key?", "Adds to keyring", "Total will be: " + String(global.privateKeys.size() + 1))) {
+    sendCommandOutput(COMMAND_NEW_KEY, "Rejected");
+    showMessage("Request Rejected", "New key generation aborted.");
+    return {"Rejected", "New key generation aborted"};
+  }
+
   char privateKeyHex[65];
   generateNewKeyHex(privateKeyHex);
   global.privateKeys.push_back(privateKeyHex);
